@@ -1,6 +1,15 @@
 .App {
   text-align: center;
+  position: relative;
 }
+
+canvas, video {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+
 
 .App-logo {
   animation: App-logo-spin infinite 20s linear;
