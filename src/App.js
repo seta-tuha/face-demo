@@ -41,15 +41,20 @@ function App() {
   }, [])
 
   React.useEffect(() => {
-    if (faceApiReady && cameraReady) {
+    if (faceApiReady && cameraReady && videoRef.current) {
+      const options = getFaceDetectorOptions(faceApi.nets.ssdMobilenetv1)
       async function trackingFace() {
-        const options = getFaceDetectorOptions(faceApi.nets.ssdMobilenetv1)
-        const result = await faceApi.detectAllFaces(videoRef.current, options)
+        if (!videoRef.current) {
+          return;
+        }
+        const result = await faceApi.detectAllFaces(videoRef.current, options);
         if (result.length > 0 && videoRef.current) {
           const dims = faceApi.matchDimensions(canvasRef.current, videoRef.current, true)
           faceApi.draw.drawDetections(canvasRef.current, faceApi.resizeResults(result, dims))
+          await videoRef.current.pause();
           const blob = await imageCaptureRef.current.takePhoto();
           setImages(x => [...x, URL.createObjectURL(blob)]);
+          await videoRef.current.play();
         }
         captureAnimationFrame.current = window.requestAnimationFrame(trackingFace);
       }
