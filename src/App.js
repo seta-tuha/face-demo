@@ -13,50 +13,105 @@ import { getFaceDetectorOptions } from './configuration'
 // }
 
 function App() {
-  const videoRef = React.createRef();
-  const canvasRef = React.createRef();
-  const mtcnnForwardParams = {
-    // limiting the search space to larger faces for webcam detection
-    minFaceSize: 200
-  }
+  const videoRef = React.useRef();
+  const canvasRef = React.useRef();
+
+  const streamRef = React.useRef();
+  const imageCaptureRef = React.useRef();
+
+  const [cameraReady, setCameraReady] = React.useState(false);
+  const [faceApiReady, setFaceApiReady] = React.useState(false);
+
+  const [images, setImages] = React.useState([]);
 
   React.useEffect(() => {
-    async function initApp() {
+    async function initCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia(
+        { video: { width: 400 } }
+      )
+      streamRef.current = stream;
+      imageCaptureRef.current = new window.ImageCapture(stream.getVideoTracks()[0]);
+      setCameraReady(true);
+    }
+    initCamera();
+  }, [])
+
+  React.useEffect(() => {
+    async function initFaceApi() {
       await faceApi.loadMtcnnModel('/');
       await faceApi.loadFaceDetectionModel('/');
-      navigator.getUserMedia(
-        { video: {} },
-        stream => {
-          videoRef.current.srcObject = stream;
-        },
-        err => console.error(err)
-      )
+      setFaceApiReady(true);
     }
-    videoRef.current.onloadedmetadata = async function onPlay() {
-      videoRef.current.play();
-      const options = getFaceDetectorOptions(faceApi.nets.ssdMobilenetv1)
-      const ts = Date.now()
-      const result = await faceApi.detectAllFaces(videoRef.current, options)
-      console.log(result);
-      if (result) {
-        const dims = faceApi.matchDimensions(canvasRef.current, videoRef.current, true)
-        faceApi.draw.drawDetections(canvasRef.current, faceApi.resizeResults(result, dims))
-      }
-      setTimeout(() => onPlay())
-    };
-    // videoRef.current.onPlay = async function onPlay() {
+    initFaceApi();
+  }, [])
 
-    // }
-    initApp();
-  }, []);
+  React.useEffect(() => {
+    if (faceApiReady && cameraReady) {
+      async function trackingFace() {
+        const options = getFaceDetectorOptions(faceApi.nets.ssdMobilenetv1)
+        const result = await faceApi.detectAllFaces(videoRef.current, options)
+        if (result.length > 0) {
+          const dims = faceApi.matchDimensions(canvasRef.current, videoRef.current, true)
+          faceApi.draw.drawDetections(canvasRef.current, faceApi.resizeResults(result, dims))
+          const blob = await imageCaptureRef.current.takePhoto();
+          setImages(x => [...x, URL.createObjectURL(blob)]);
+        }
+        window.requestAnimationFrame(trackingFace);
+      }
+
+      videoRef.current.onloadedmetadata = function onPlay() {
+        videoRef.current.play();
+        trackingFace();
+      };
+
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [cameraReady, faceApiReady])
+
+  // React.useEffect(() => {
+  //   async function initApp() {
+  //     await faceApi.loadMtcnnModel('/');
+  //     await faceApi.loadFaceDetectionModel('/');
+  //     videoRef.current.srcObject = await navigator.mediaDevices.getUserMedia(
+  //       { video: {} }
+  //     )
+  //   }
+  //   async function trackingFace() {
+  //     const options = getFaceDetectorOptions(faceApi.nets.ssdMobilenetv1)
+  //     const result = await faceApi.detectAllFaces(videoRef.current, options)
+  //     if (result) {
+  //       const dims = faceApi.matchDimensions(canvasRef.current, videoRef.current, true)
+  //       faceApi.draw.drawDetections(canvasRef.current, faceApi.resizeResults(result, dims))
+  //     }
+
+  //     window.requestAnimationFrame(trackingFace);
+  //   }
+
+  //   videoRef.current.onloadedmetadata = async function onPlay() {
+  //     videoRef.current.play();
+  //     trackingFace();
+  //   };
+  //   initApp();
+  // }, []);
 
 
 
   return (
-    <div className="App">
-      <video ref={videoRef} />
-      <canvas ref={canvasRef} />
-    </div>
+    <>
+      <div className="App">
+        {
+          !cameraReady ? 'Init camera' : !faceApiReady ? 'Init face api' : null
+        }
+        <video ref={videoRef} />
+        <canvas ref={canvasRef} />
+
+      </div>
+      {
+        images.map((imageUrl, index) => (
+          <img src={imageUrl} key={index} alt="capture" width={200} />
+        ))
+      }
+    </>
   );
 }
 
