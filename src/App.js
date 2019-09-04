@@ -3,14 +3,7 @@ import * as faceApi from 'face-api.js';
 import './App.css';
 import { getFaceDetectorOptions } from './configuration'
 
-// var forwardTimes = []
-
-// function updateTimeStats(timeInMs) {
-//   forwardTimes = [timeInMs].concat(forwardTimes).slice(0, 30)
-//   const avgTimeInMs = forwardTimes.reduce((total, t) => total + t) / forwardTimes.length
-//   $('#time').val(`${Math.round(avgTimeInMs)} ms`)
-//   $('#fps').val(`${faceApi.round(1000 / avgTimeInMs)}`)
-// }
+const MAX_IMAGES = 10;
 
 function App() {
   const videoRef = React.useRef();
@@ -18,9 +11,11 @@ function App() {
 
   const streamRef = React.useRef();
   const imageCaptureRef = React.useRef();
+  const captureAnimationFrame = React.useRef();
 
   const [cameraReady, setCameraReady] = React.useState(false);
   const [faceApiReady, setFaceApiReady] = React.useState(false);
+  const [finishCapturing, setFinishCapturing] = React.useState(false);
 
   const [images, setImages] = React.useState([]);
 
@@ -50,13 +45,13 @@ function App() {
       async function trackingFace() {
         const options = getFaceDetectorOptions(faceApi.nets.ssdMobilenetv1)
         const result = await faceApi.detectAllFaces(videoRef.current, options)
-        if (result.length > 0) {
+        if (result.length > 0 && videoRef.current) {
           const dims = faceApi.matchDimensions(canvasRef.current, videoRef.current, true)
           faceApi.draw.drawDetections(canvasRef.current, faceApi.resizeResults(result, dims))
           const blob = await imageCaptureRef.current.takePhoto();
           setImages(x => [...x, URL.createObjectURL(blob)]);
         }
-        window.requestAnimationFrame(trackingFace);
+        captureAnimationFrame.current = window.requestAnimationFrame(trackingFace);
       }
 
       videoRef.current.onloadedmetadata = function onPlay() {
@@ -67,6 +62,19 @@ function App() {
       videoRef.current.srcObject = streamRef.current;
     }
   }, [cameraReady, faceApiReady])
+
+  React.useEffect(() => {
+    if (images.length >= MAX_IMAGES) {
+      async function stopCapturing() {
+        await window.cancelAnimationFrame(captureAnimationFrame.current);
+        for (let i = 0; i < streamRef.current.getTracks().length; i++) {
+          await streamRef.current.getTracks()[i].stop();
+        }
+        setFinishCapturing(true);
+      }
+      stopCapturing();
+    }
+  }, [images])
 
   // React.useEffect(() => {
   //   async function initApp() {
@@ -98,19 +106,26 @@ function App() {
 
   return (
     <>
-      <div className="App">
-        {
-          !cameraReady ? 'Init camera' : !faceApiReady ? 'Init face api' : null
-        }
-        <video ref={videoRef} />
-        <canvas ref={canvasRef} />
-
-      </div>
       {
-        images.map((imageUrl, index) => (
-          <img src={imageUrl} key={index} alt="capture" width={200} />
-        ))
+        !finishCapturing && (
+          <div className="App">
+            <video ref={videoRef} />
+            <canvas ref={canvasRef} />
+          </div>
+        )
       }
+      <div>
+        {
+          !cameraReady && <div>Init camera</div>}
+        {
+          !faceApiReady && <div>Init face api</div>
+        }
+        {
+          images.map((imageUrl, index) => (
+            <img src={imageUrl} key={index} alt="capture" width={200} />
+          ))
+        }
+      </div>
     </>
   );
 }
